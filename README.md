@@ -42,10 +42,10 @@ Install the ESP32 board in the Arduino IDE.
 Upload the provided code and connect all sensors accordingly.
 
 ## 📊** Visuals**
-images/Ekran görüntüsü 2025-05-28 003227.png
-images/Ekran görüntüsü 2025-06-03 221739.png
-images/Figure_5.png
-images/Figure_n1.png
+![System Diagram]images/Ekran görüntüsü 2025-05-28 003227.png
+![System Diagram]images/Ekran görüntüsü 2025-06-03 221739.png
+![System Diagram]images/Figure_5.png
+![System Diagram]images/Figure_n1.png
 
 
 ## 👤 **Developer**
