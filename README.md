@@ -41,17 +41,29 @@ Model output --> ESP32 --> Irrigation control
 Install the ESP32 board in the Arduino IDE.
 Upload the provided code and connect all sensors accordingly.
 
-## 📊** Visuals**
+## 📦 Setup Instructions
 
-![System Diagram](images/figure_1.png)
-![System Diagram](images/figure_2.png)
-![System Diagram](images/Figure_5.png)
-![System Diagram](images/Figure_n1.png)
+---
 
+### 1. ESP32 Setup
+
+Install the ESP32 board in the Arduino IDE.  
+Upload the provided code and connect all sensors accordingly.
+
+---
+
+## 📊 **Visuals**
+
+![System Diagram 1](images/figure_1.png)  
+![System Diagram 2](images/figure_2.png)  
+![System Diagram 3](images/figure_5.png)  
+![System Diagram 4](images/figure_n1.png)
+
+---
 
 ## 👤 **Developer**
-Name: Yunus Emre KUNT
 
-University: Mugla Sitki Kocman University – Electrical and Electronics Engineering
+**Name:** Yunus Emre KUNT  
+**University:** Muğla Sıtkı Koçman University – Electrical and Electronics Engineering  
+**LinkedIn:** [https://www.linkedin.com/in/yunusemrekunt/]
 
-LinkedIn: https://www.linkedin.com/in/yunusemrekunt/
