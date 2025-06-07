@@ -1,196 +1,147 @@
-#include <DHT.h>
+#include <ArduinoJson.h>
+#include "DHT.h"
 
-#define DHTPIN 32
+#define DHTPIN 36
 #define DHTTYPE DHT11
+
 DHT dht(DHTPIN, DHTTYPE);
 
-#define RAIN_SENSOR_PIN 34
+// Pin tanımları
+const int soilMoisturePins[] = {13, 12, 14, 27, 26, 25};
+const int flowSensorPins[] = {15, 2, 4};
+const int relayPins[] = {16, 17, 5};
+const int rainSensorPin = 34;
 
-#define RELAY1_PIN 16
-#define RELAY2_PIN 17
-#define RELAY3_PIN 5
-
-#define FLOW1_PIN 15
-#define FLOW2_PIN 2
-#define FLOW3_PIN 18
-
-#define MODE_MANUAL 0
-#define MODE_AUTO 1
-#define MODE_AI 2
+// Mod tanımları
+#define MODE_AI 1
+#define MODE_AUTO 2
+#define MODE_MANUAL 3
 
 int controlModes[3] = {MODE_MANUAL, MODE_MANUAL, MODE_MANUAL};
 int relayStates[3] = {0, 0, 0};
-int moistureThreshold = 3000;
 
-int soilPins[6] = {13, 12, 14, 27, 26, 25};
+int threshold = 3000;
+
+unsigned long lastSendTime = 0;
+unsigned long sendInterval = 1000;
 
 void setup() {
   Serial.begin(115200);
   dht.begin();
 
-  pinMode(RELAY1_PIN, OUTPUT);
-  pinMode(RELAY2_PIN, OUTPUT);
-  pinMode(RELAY3_PIN, OUTPUT);
-
-  pinMode(FLOW1_PIN, INPUT);
-  pinMode(FLOW2_PIN, INPUT);
-  pinMode(FLOW3_PIN, INPUT);
-
-  pinMode(RAIN_SENSOR_PIN, INPUT);
-
-  for (int i = 0; i < 6; i++) {
-    pinMode(soilPins[i], INPUT);
+  for (int i = 0; i < 6; i++) pinMode(soilMoisturePins[i], INPUT);
+  for (int i = 0; i < 3; i++) pinMode(flowSensorPins[i], INPUT);
+  for (int i = 0; i < 3; i++) {
+    pinMode(relayPins[i], OUTPUT);
+    digitalWrite(relayPins[i], HIGH); // Röleler başlangıçta kapalı
   }
-
-  digitalWrite(RELAY1_PIN, LOW);
-  digitalWrite(RELAY2_PIN, LOW);
-  digitalWrite(RELAY3_PIN, LOW);
+  pinMode(rainSensorPin, INPUT);
 }
 
-void updateThreshold(int value) {
-  if (value < 2000) value = 2000;
-  else if (value > 3500) value = 3500;
-  moistureThreshold = value;
+void loop() {
+  handleSerialCommands();    // Her döngüde seri komutları kontrol et
+  updateRelays();            // Röleleri kontrol et
+
+  unsigned long currentTime = millis();
+  if (currentTime - lastSendTime >= sendInterval) {
+    lastSendTime = currentTime;
+    sendSensorData();        // Verileri gönder
+  }
+}
+
+void updateRelays() {
+  for (int i = 0; i < 3; i++) {
+    if (controlModes[i] == MODE_AUTO) {
+      int sensorIndex1 = i;
+      int sensorIndex2 = i + 3;
+      int avgMoisture = (analogRead(soilMoisturePins[sensorIndex1]) + analogRead(soilMoisturePins[sensorIndex2])) / 2;
+
+      if (avgMoisture > threshold) {
+        digitalWrite(relayPins[i], LOW);  // Röleyi aç
+        relayStates[i] = 0;
+      } else {
+        digitalWrite(relayPins[i], HIGH); // Röleyi kapat
+        relayStates[i] = 1;
+      }
+    }
+    // AI ve MANUAL modlarda işlem `handleSerialCommands()` ile yapılır
+  }
 }
 
 void handleSerialCommands() {
-  if (Serial.available()) {
-    String cmd = Serial.readStringUntil('\n');
-    cmd.trim();
+  while (Serial.available()) {
+    String input = Serial.readStringUntil('\n');
+    input.trim();
 
-    if (cmd.startsWith("THRESHOLD:")) {
-      int val = cmd.substring(10).toInt();
-      updateThreshold(val);
+    if (input.startsWith("THRESHOLD:")) {
+      threshold = input.substring(10).toInt();
     }
-    else if (cmd.startsWith("MODE:")) {
-      int sepIndex = cmd.indexOf(':', 5);
-      if (sepIndex != -1) {
-        int relayIndex = cmd.substring(5, sepIndex).toInt();
-        int mode = cmd.substring(sepIndex + 1).toInt();
-        if (relayIndex >= 0 && relayIndex < 3) {
-          controlModes[relayIndex] = mode;
-        }
+    else if (input.startsWith("MODE:")) {
+      int firstColon = input.indexOf(':');
+      int secondColon = input.indexOf(':', firstColon + 1);
+      int relayIndex = input.substring(firstColon + 1, secondColon).toInt();
+      int mode = input.substring(secondColon + 1).toInt();
+      if (relayIndex >= 0 && relayIndex < 3) {
+        controlModes[relayIndex] = mode;
       }
     }
-    else if (cmd.startsWith("RELAY:")) {
-      int relayIndex = cmd.substring(6, 7).toInt();
-      int state = cmd.substring(8).toInt();
-      if (relayIndex >= 0 && relayIndex < 3) {
+    else if (input.startsWith("RELAY:")) {
+      int firstColon = input.indexOf(':');
+      int secondColon = input.indexOf(':', firstColon + 1);
+      int relayIndex = input.substring(firstColon + 1, secondColon).toInt();
+      int state = input.substring(secondColon + 1).toInt();
+      if (relayIndex >= 0 && relayIndex < 3 && controlModes[relayIndex] == MODE_MANUAL) {
+        digitalWrite(relayPins[relayIndex], state == 0 ? LOW : HIGH);
         relayStates[relayIndex] = state;
       }
     }
-  }
-}
-
-void updateRelays(int* soilVals) {
-  int relayPins[3] = {RELAY1_PIN, RELAY2_PIN, RELAY3_PIN};
-  int groups[3][2] = {{0, 3}, {1, 4}, {2, 5}};
-
-  for (int i = 0; i < 3; i++) {
-    int avgMoisture = (soilVals[groups[i][0]] + soilVals[groups[i][1]]) / 2;
-    int newState = LOW;
-
-    switch (controlModes[i]) {
-      case MODE_MANUAL:
-        newState = relayStates[i];
-        break;
-
-      case MODE_AUTO:
-        newState = (avgMoisture > moistureThreshold) ? HIGH : LOW;
-        break;
-
-      case MODE_AI:
-        // AI komutlarını doğrudan işle
-        if (Serial.available()) {
-          String command = Serial.readStringUntil('\n');
-          command.trim();
-
-          if (command == "RELAY1_ON") {
-            digitalWrite(RELAY1_PIN, LOW);
-            Serial.println("RELAY1 is ON");
-          }
-          else if (command == "RELAY1_OFF") {
-            digitalWrite(RELAY1_PIN, HIGH);
-            Serial.println("RELAY1 is OFF");
-          }
-          else if (command == "RELAY2_ON") {
-            digitalWrite(RELAY2_PIN, LOW);
-            Serial.println("RELAY2 is ON");
-          }
-          else if (command == "RELAY2_OFF") {
-            digitalWrite(RELAY2_PIN, HIGH);
-            Serial.println("RELAY2 is OFF");
-          }
-          else if (command == "RELAY3_ON") {
-            digitalWrite(RELAY3_PIN, LOW);
-            Serial.println("RELAY3 is ON");
-          }
-          else if (command == "RELAY3_OFF") {
-            digitalWrite(RELAY3_PIN, HIGH);
-            Serial.println("RELAY3 is OFF");
-          }
-        }
-        continue;  // Bu iterasyonu atla, AI komutları zaten röleleri kontrol etti
+    else if (input == "RELAY1_ON") {
+      digitalWrite(relayPins[0], LOW);
+      relayStates[0] = 0;
     }
-
-    digitalWrite(relayPins[i], newState);
-    relayStates[i] = newState;
+    else if (input == "RELAY1_OFF") {
+      digitalWrite(relayPins[0], HIGH);
+      relayStates[0] = 1;
+    }
+    else if (input == "RELAY2_ON") {
+      digitalWrite(relayPins[1], LOW);
+      relayStates[1] = 0;
+    }
+    else if (input == "RELAY2_OFF") {
+      digitalWrite(relayPins[1], HIGH);
+      relayStates[1] = 1;
+    }
+    else if (input == "RELAY3_ON") {
+      digitalWrite(relayPins[2], LOW);
+      relayStates[2] = 0;
+    }
+    else if (input == "RELAY3_OFF") {
+      digitalWrite(relayPins[2], HIGH);
+      relayStates[2] = 1;
+    }
   }
 }
 
 void sendSensorData() {
+  StaticJsonDocument<512> doc;
+
   float temperature = dht.readTemperature();
   float humidity = dht.readHumidity();
+  int rain = digitalRead(rainSensorPin);
 
-  int soilVals[6];
+  doc["temp"] = isnan(temperature) ? -1 : temperature;
+  doc["hum"] = isnan(humidity) ? -1 : humidity;
+  doc["rain"] = rain;
+
   for (int i = 0; i < 6; i++) {
-    soilVals[i] = analogRead(soilPins[i]);
+    doc["soil" + String(i + 1)] = analogRead(soilMoisturePins[i]);
+  }
+  for (int i = 0; i < 3; i++) {
+    doc["flow" + String(i + 1)] = digitalRead(flowSensorPins[i]);
+    doc["relay" + String(i + 1)] = relayStates[i];
+    doc["mode" + String(i + 1)] = controlModes[i];
   }
 
-  int soil_avg1_4 = (soilVals[0] + soilVals[3]) / 2;
-  int soil_avg2_5 = (soilVals[1] + soilVals[4]) / 2;
-  int soil_avg3_6 = (soilVals[2] + soilVals[5]) / 2;
-
-  updateRelays(soilVals);
-
-  bool isRaining = digitalRead(RAIN_SENSOR_PIN) == LOW;
-
-  int flow1 = digitalRead(FLOW1_PIN);
-  int flow2 = digitalRead(FLOW2_PIN);
-  int flow3 = digitalRead(FLOW3_PIN);
-
-  Serial.print("{");
-  Serial.printf("\"soil_1\":%d,", soilVals[0]);
-  Serial.printf("\"soil_4\":%d,", soilVals[3]);
-  Serial.printf("\"soil_avg1_4\":%d,", soil_avg1_4);
-
-  Serial.printf("\"soil_2\":%d,", soilVals[1]);
-  Serial.printf("\"soil_5\":%d,", soilVals[4]);
-  Serial.printf("\"soil_avg2_5\":%d,", soil_avg2_5);
-
-  Serial.printf("\"soil_3\":%d,", soilVals[2]);
-  Serial.printf("\"soil_6\":%d,", soilVals[5]);
-  Serial.printf("\"soil_avg3_6\":%d,", soil_avg3_6);
-
-  Serial.printf("\"temp\":%.2f,", temperature);
-  Serial.printf("\"humidity\":%.2f,", humidity);
-  Serial.printf("\"rain\":%d,", isRaining ? 1 : 0);
-
-  Serial.printf("\"flow1\":%d,", flow1);
-  Serial.printf("\"flow2\":%d,", flow2);
-  Serial.printf("\"flow3\":%d,", flow3);
-
-  Serial.printf("\"relay1\":%d,", digitalRead(RELAY1_PIN));
-  Serial.printf("\"relay2\":%d,", digitalRead(RELAY2_PIN));
-  Serial.printf("\"relay3\":%d", digitalRead(RELAY3_PIN));
-  Serial.println("}");
-}
-
-void loop() {
-  handleSerialCommands();
-  static unsigned long lastSend = 0;
-  if (millis() - lastSend > 1000) {
-    lastSend = millis();
-    sendSensorData();
-  }
+  serializeJson(doc, Serial);
+  Serial.println();
 }
