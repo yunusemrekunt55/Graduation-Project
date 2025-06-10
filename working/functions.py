@@ -51,7 +51,7 @@ else:
 
 # Google Sheets API kimlik doğrulama
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds = ServiceAccountCredentials.from_json_keyfile_name("my-project2dadadada.json", scope)
+creds = ServiceAccountCredentials.from_json_keyfile_name("my-project2dadadada.json", scope) #this will be your json file
 client = gspread.authorize(creds)
 
 # Google Sheets'den veri çekme
